@@ -9,12 +9,34 @@ namespace TimeSchedulerSimple
 {
     public class SchedulerDataSource : TimeSchedulerDataSource
     {
-        private readonly object[] _resources;
-        private readonly IDictionary<DateTime, IList<SchedulerTask>> _taskDictionary = new Dictionary<DateTime, IList<SchedulerTask>>();
+        private readonly ResourceModel[] _resources;
+        private readonly IDictionary<DateTime, IList<TaskModel>> _tasks = new Dictionary<DateTime, IList<TaskModel>>();
 
         public SchedulerDataSource()
         {
-            _resources = new object[] { "Chapman Glenn", "Reyes Sally", "Torres Xavier", "Daniels Ava", "Reese Millie", "Adams Musa", "Morgan Roxanne", "Wolf Darren", "Walters Anna", "Bush Ryan", "Owens Maryam", "Whitehouse Evangeline", "Hammond Paige", "Solis Chris", "Rodgers Jacqueline", "Molina Otis", "Mendez Constance", "Lloyd Sienna", "Murray Abby", "Lawrence Tyler" }; 
+            _resources = new []
+            {
+                new ResourceModel("Chapman Glenn"),
+                new ResourceModel("Reyes Sally"),
+                new ResourceModel("Torres Xavier"),
+                new ResourceModel("Daniels Ava"),
+                new ResourceModel("Reese Millie"),
+                new ResourceModel("Adams Musa"),
+                new ResourceModel("Morgan Roxanne"),
+                new ResourceModel("Wolf Darren"),
+                new ResourceModel("Walters Anna"),
+                new ResourceModel("Bush Ryan"),
+                new ResourceModel("Owens Maryam"),
+                new ResourceModel("Whitehouse Evangeline"),
+                new ResourceModel("Hammond Paige"),
+                new ResourceModel("Solis Chris"),
+                new ResourceModel("Rodgers Jacqueline"),
+                new ResourceModel("Molina Otis"),
+                new ResourceModel("Mendez Constance"),
+                new ResourceModel("Lloyd Sienna"),
+                new ResourceModel("Murray Abby"),
+                new ResourceModel("Lawrence Tyler")
+            }; 
         }
 
 
@@ -24,24 +46,30 @@ namespace TimeSchedulerSimple
         }
         protected override TimeSchedulerTaskDescriptor CreateTaskDescriptor()
         {
-            return new TimeSchedulerTaskDescriptor(typeof(SchedulerTask), nameof(SchedulerTask.Resource), nameof(SchedulerTask.Interval));
+            return new TimeSchedulerTaskDescriptor(typeof(TaskModel), nameof(TaskModel.Resource), nameof(TaskModel.Interval));
         }
 
-        public override IList<object> LoadResources() => _resources;
+        public override IList<object> LoadResources() => _resources.Cast<object>().ToList();
         public override void LoadContent(TimeSchedulerDataSourceView view)
         {
             var interval = view.Interval;
-            var resources = view.Resources;
+            var resources = view.Resources.Cast<ResourceModel>().ToList();
+
+            IList<TaskModel> GetTaskForDate(DateTime date)
+            {
+                if (!_tasks.ContainsKey(date))
+                    _tasks.Add(date.Date, GenerateTasks(date).ToList());
+
+                return _tasks[date];
+            };
 
             foreach (var item in resources)
                 view.AddWorkTime(item, interval, Colors.White);
 
             for (var i = interval.Start.Date; i <= interval.End.Date; i = i.AddDays(1))
             {
-                if(!_taskDictionary.ContainsKey(i))
-                    _taskDictionary.Add(i, GenerateTasks(i).ToList());
-
-                var tasks = _taskDictionary[i];
+                var date = i.Date;
+                var tasks = GetTaskForDate(date);
                 var loadedTasks = tasks.Where(x => interval.IntersectsWith(x.Interval) && view.Resources.Contains(x.Resource))
                     .OrderBy(x => x.Interval.Start).ThenBy(x => x.Interval.End).ToList();
 
@@ -49,8 +77,11 @@ namespace TimeSchedulerSimple
                 {
                     var task = loadedTasks[j];
                     view.AddTask(task);
-                    if (j > 0)
-                        view.AddConnection(loadedTasks[j - 1], task, false, Colors.DarkGray);
+                    // Connections
+                    var nextTask = tasks.FirstOrDefault(x => x.Resource.ID == task.Resource.ID + 2 && x.Interval.Start > task.Interval.End)
+                                   ?? GetTaskForDate(i.AddDays(1).Date).FirstOrDefault(x => x.Resource.ID == task.Resource.ID + 2 && x.Interval.Start > task.Interval.End);
+                    if (nextTask != null)
+                        view.AddConnection(task, nextTask, true, Colors.DarkOrange);
                 }
             } 
         }
@@ -58,20 +89,20 @@ namespace TimeSchedulerSimple
         #region Data generation
 
         private readonly Random m_random = new Random();
-        public IEnumerable<SchedulerTask> GenerateTasks(DateTime dateTime)
+        public IEnumerable<TaskModel> GenerateTasks(DateTime dateTime)
         {
             for (var k = 0; k < _resources.Length; k++)
             {
-                var element = _resources[k];
+                var resource = _resources[k];
                 var count = m_random.Next(2);
                 for (var j = 0; j < count; j++)
                 {
                     var minutes = m_random.Next(12 * 60);
                     var length = m_random.Next(2 * 60,  11 * 60);
 
-                    yield return new SchedulerTask()
+                    yield return new TaskModel()
                     {
-                        Resource = element,
+                        Resource = resource,
                         Interval = new DateTimeInterval(dateTime.AddMinutes(minutes), new TimeSpan(0, length, 0))
                     };
                 }
@@ -82,9 +113,23 @@ namespace TimeSchedulerSimple
 
         #region Classes
 
-        public class SchedulerTask
+        public class ResourceModel
         {
-            public object Resource { get; set; }
+            private static int m_id = 0;
+            public int ID { get; }
+            public string Name { get; }
+
+            public ResourceModel(string name)
+            {
+                ID = m_id++;
+                Name = name;
+            }
+
+            public override string ToString() => Name;
+        }
+        public class TaskModel
+        {
+            public ResourceModel Resource { get; set; }
             public DateTimeInterval Interval { get; set; }
 
             public override string ToString()
